@@ -27,3 +27,22 @@ def save_gif(frames: list[np.ndarray], output_path: str, fps: int) -> None:
         duration=duration_ms,
         loop=0,
     )
+
+
+def save_image(frame: np.ndarray, output_path: str) -> None:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(frame, mode="RGB").save(path)
+
+
+def save_frames_as_png(frames: list[np.ndarray], output_dir: str, prefix: str = "frame") -> None:
+    if not frames:
+        return
+
+    dir_path = Path(output_dir)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    digits = max(4, len(str(len(frames) - 1)))
+
+    for idx, frame in enumerate(frames):
+        output_path = dir_path / f"{prefix}_{idx:0{digits}d}.png"
+        Image.fromarray(frame, mode="RGB").save(output_path)

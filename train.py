@@ -1,125 +1,100 @@
-import math
-
+from gsplatviz.backbones import create_resnet18
 import torch
+from pathlib import Path
+from tqdm.auto import tqdm
 
-from minimal_gsplat.camera import Camera
-from minimal_gsplat.gif_utils import frame_from_render, save_gif
-from minimal_gsplat.model import GaussianSplatModel
+from gsplatviz.camera import CameraRanges, build_K, viewmats_from_spherical
+from gsplatviz.splat import GaussianSplat, CameraParameterSampler
+from gsplatviz.model_visualizer import GaussianSplatModelVisualizer
 
 
-num_gaussians = 512
-width = 320
-height = 240
-horizontal_fov_deg = 60.0
-vertical_fov_deg = 45.0
-steps = 1000
-lr = 5e-3
-seed = 0
-print_every = 100
-gif_path = "training.gif"
-gif_every = 10
-gif_fps = 5
+num_gaussians = 10000
+width = 256
+height = 256
+steps = 3000000
+lr = 1e-3
+seed = 42
+viz_every = 200
+viz_every_factor = 1.1
+vis_frames = 72
+vis_fps = 20
+target_class = 388
+backbone = "resnet18"
+batch_size = 16
 
-# Rotating camera GIF settings
-create_rotation_gif = True
-rotation_gif_path = "final_splat_rotation.gif"
-rotation_gif_fps = 10
-rotation_radius = 4.0
-rotation_frames = 60  # Number of frames for full 360 rotation
+camera_ranges = CameraRanges(
+    azimuth_range=(-180.0, 180.0),
+    elevation_range=(-10.0, 10.0),
+    distance_range=(0.8, 1.2),
+)
+model_output_dir = Path("trained_gaussiansplat_models")
+
 
 if not torch.cuda.is_available():
     raise RuntimeError("CUDA is required")
 
-device = torch.device("cuda")
 torch.manual_seed(seed)
+model_output_dir.mkdir(parents=True, exist_ok=True)
 
-model = GaussianSplatModel(num_gaussians=num_gaussians, device=device)
-camera = Camera(
-    width=width,
-    height=height,
-    horizontal_fov_deg=horizontal_fov_deg,
-    vertical_fov_deg=vertical_fov_deg,
-    device=device,
-)
+classifier = create_resnet18()
+
+print(f"Training on cuda with {num_gaussians} gaussians")
+visualization_dir = Path(f"training_{backbone}_{target_class}_visualizations")
+visualization_dir.mkdir(parents=True, exist_ok=True)
+model = GaussianSplat(num_gaussians=num_gaussians)
+K = build_K(width, height)
+sampler = CameraParameterSampler(ranges=camera_ranges)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-frames: list = []
 
-print(f"Training on {device} with {num_gaussians} gaussians")
-for step in range(1, steps + 1):
+current_viz_every = max(1, int(viz_every))
+next_viz_step = 1
+
+progress = tqdm(range(1, steps + 1), desc=f"class={target_class}", total=steps)
+for step in progress:
     optimizer.zero_grad(set_to_none=True)
 
-    viewmats, Ks = camera.matrices()
-    rendered = model.render_rgb(viewmats, Ks, width, height)
+    azimuth_deg, elevation_deg, distance = sampler(batch_size=batch_size)
+    viewmats = viewmats_from_spherical(azimuth_deg, elevation_deg, distance)
+    Ks = K.unsqueeze(0).expand(batch_size, -1, -1)
+    rendered = model.render(viewmats=viewmats, Ks=Ks, width=width, height=height)
 
-    loss = rendered.mean()
-
-    if gif_path and (step == 1 or step % gif_every == 0 or step == steps):
-        frames.append(frame_from_render(rendered))
+    rendered_rgb = rendered[..., :3].permute(0, 3, 1, 2).contiguous().clamp(0.0, 1.0)
+    scores = classifier(rendered_rgb)
+    loss = -scores[:, target_class].mean()
 
     loss.backward()
     optimizer.step()
 
-    if step == 1 or step % print_every == 0:
-        print(f"step={step:04d} loss={loss.item():.6f}")
-
-if gif_path:
-    save_gif(frames, gif_path, fps=gif_fps)
-    print(f"Saved training GIF to {gif_path}")
-
-# Create rotating camera GIF of final splat
-if create_rotation_gif:
-    print(f"Creating rotating camera GIF with {rotation_frames} frames...")
-    rotation_frames_list = []
-
-    for i in range(rotation_frames):
-        angle = 2 * math.pi * i / rotation_frames
-        # Camera position on circle in XZ plane
-        eye_x = rotation_radius * math.cos(angle)
-        eye_z = rotation_radius * math.sin(angle)
-        eye_y = 0.0  # Camera height
-        eye = torch.tensor([eye_x, eye_y, eye_z], dtype=torch.float32, device=device)
-
-        # Target to look at (origin)
-        target = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device=device)
-
-        # Up vector
-        up = torch.tensor([0.0, 1.0, 0.0], dtype=torch.float32, device=device)
-
-        # Compute camera coordinate system
-        forward = target - eye
-        forward = forward / forward.norm()
-
-        right = torch.cross(forward, up)
-        right = right / right.norm()
-
-        new_up = torch.cross(right, forward)
-
-        # Build rotation matrix (camera to world)
-        R = torch.stack([right, new_up, -forward], dim=1)  # [3, 3]
-
-        # Build translation
-        t = -R @ eye  # [3]
-
-        # Build 4x4 world_to_camera matrix
-        world_to_camera = torch.eye(4, dtype=torch.float32, device=device)
-        world_to_camera[:3, :3] = R
-        world_to_camera[:3, 3] = t
-
-        # Create camera and render
-        rot_camera = Camera(
+    if step == next_viz_step or step == steps:
+        iter_gif_path = visualization_dir / f"iter_{step:07d}.gif"
+        visualizer = GaussianSplatModelVisualizer(
+            model=model,
             width=width,
             height=height,
-            horizontal_fov_deg=horizontal_fov_deg,
-            vertical_fov_deg=vertical_fov_deg,
-            device=device,
-            world_to_camera=world_to_camera,
+            ranges=camera_ranges,
         )
+        visualizer.create_gif(
+            output_path=str(iter_gif_path),
+            num_frames=vis_frames,
+            fps=vis_fps,
+        )
+        if step == next_viz_step:
+            next_viz_step += current_viz_every
+            current_viz_every = int(round(current_viz_every * viz_every_factor))
 
-        viewmats, Ks = rot_camera.matrices()
-        rendered = model.render_rgb(viewmats, Ks, width, height)
-        rotation_frames_list.append(frame_from_render(rendered))
+    if step % 10 == 1:
+        progress.set_postfix(loss=f"{loss.item():.6f}")
 
-    save_gif(rotation_frames_list, rotation_gif_path, fps=rotation_gif_fps)
-    print(f"Saved rotating camera GIF to {rotation_gif_path}")
+final_model_path = model_output_dir / f"training_{backbone}_{target_class}.pt"
+torch.save(
+    {
+        "backbone": backbone,
+        "target_class": int(target_class),
+        "state_dict": {name: tensor.detach().cpu() for name, tensor in model.state_dict().items()},
+    },
+    final_model_path,
+)
+print(f"Saved final GaussianSplatModel to {final_model_path}")
 
 print("Done.")

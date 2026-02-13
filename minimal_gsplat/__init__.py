@@ -1,1 +1,0 @@
-"""Minimal Gaussian splatting package."""
