@@ -12,20 +12,29 @@ def frame_from_render(rendered: torch.Tensor) -> np.ndarray:
 
 
 def save_gif(frames: list[np.ndarray], output_path: str, fps: int) -> None:
+    """Save a list of frames as an animated GIF using PIL."""
     if not frames:
         return
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Ensure extension is .gif
+    if path.suffix.lower() != ".gif":
+        path = path.with_suffix(".gif")
+
     images = [Image.fromarray(frame, mode="RGB") for frame in frames]
+
+    # PIL duration is in milliseconds per frame
     duration_ms = max(1, int(1000 / max(1, fps)))
+
     images[0].save(
         path,
         save_all=True,
         append_images=images[1:],
         duration=duration_ms,
         loop=0,
+        optimize=True,
     )
 
 

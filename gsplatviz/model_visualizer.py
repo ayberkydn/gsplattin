@@ -8,33 +8,21 @@ from .camera import CameraRanges, build_K, viewmats_from_spherical
 from .splat import GaussianSplat
 
 
-class GaussianSplatModelVisualizer:
+class SplatVizualizer:
     """Renders a GaussianSplat across camera ranges and saves a GIF."""
 
     def __init__(
         self,
-        model: GaussianSplat,
+        splat: GaussianSplat,
         width: int,
         height: int,
         ranges: CameraRanges,
     ) -> None:
-        self.model = model
+        self.splat = splat
         self.width = width
         self.height = height
         self.ranges = ranges
         self.K = build_K(width, height)
-        self._validate_ranges()
-
-    def _validate_ranges(self) -> None:
-        r = self.ranges
-        if r.azimuth_range[0] > r.azimuth_range[1]:
-            raise ValueError("azimuth_range[0] must be <= azimuth_range[1]")
-        if r.elevation_range[0] > r.elevation_range[1]:
-            raise ValueError("elevation_range[0] must be <= elevation_range[1]")
-        if r.distance_range[0] <= 0:
-            raise ValueError("distance_range[0] must be > 0")
-        if r.distance_range[0] > r.distance_range[1]:
-            raise ValueError("distance_range[0] must be <= distance_range[1]")
 
     def _periodic_interp(
         self,
@@ -49,14 +37,7 @@ class GaussianSplatModelVisualizer:
         return min_value + (max_value - min_value) * alpha
 
     def _camera_trajectory(self, num_frames: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if num_frames <= 0:
-            raise ValueError("num_frames must be > 0")
-
-        if num_frames == 1:
-            phase = torch.zeros(1, dtype=torch.float32, device="cuda")
-        else:
-            phase = torch.linspace(0.0, 2.0 * math.pi, steps=num_frames + 1, dtype=torch.float32, device="cuda")[:-1]
-
+        phase = torch.linspace(0.0, 2.0 * math.pi, steps=num_frames + 1, dtype=torch.float32)[:-1]
         r = self.ranges
         azimuth_deg = self._periodic_interp(r.azimuth_range[0], r.azimuth_range[1], phase, phase_shift=0.0)
         elevation_deg = self._periodic_interp(r.elevation_range[0], r.elevation_range[1], phase, phase_shift=math.pi * 0.5)
@@ -65,17 +46,11 @@ class GaussianSplatModelVisualizer:
 
     def render_frames(self, num_frames: int) -> list[np.ndarray]:
         azimuth_deg, elevation_deg, distance = self._camera_trajectory(num_frames=num_frames)
-
-        was_training = self.model.training
-        self.model.eval()
         with torch.no_grad():
             viewmats = viewmats_from_spherical(azimuth_deg, elevation_deg, distance)
             Ks = self.K.unsqueeze(0).expand(num_frames, -1, -1)
-            rendered_batch = self.model.render(viewmats=viewmats, Ks=Ks, width=self.width, height=self.height)
+            rendered_batch, _ = self.splat.render(viewmats=viewmats, Ks=Ks, width=self.width, height=self.height)
             frames = [frame_from_render(rendered_batch[idx : idx + 1]) for idx in range(num_frames)]
-
-        if was_training:
-            self.model.train()
         return frames
 
     def create_gif(

@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from gsplat import rasterization
+from gsplat import export_splats, rasterization
 from torch import nn
 
 from .camera import CameraRanges
@@ -9,32 +9,47 @@ from .camera import CameraRanges
 class GaussianSplat(nn.Module):
     """Gaussian splat with learnable parameters and batched rendering."""
 
-    def __init__(self, num_gaussians: int) -> None:
+    def __init__(self, num_gaussians: int, sh_degree: int = 0) -> None:
         super().__init__()
+
+        self.sh_degree = int(sh_degree)
+        self.num_sh_coeffs = (self.sh_degree + 1) ** 2
 
         # Initialize gaussians around the origin.
         means = torch.randn(num_gaussians, 3, device="cuda") * 0.1
-        self.means = nn.Parameter(means)
 
         # Quaternion rotation (w, x, y, z). Initialized to identity.
         quats = torch.zeros(num_gaussians, 4, device="cuda")
         quats[:, 0] = 1.0
-        self.quats = nn.Parameter(quats)
 
         # Log-space scale for positive radii after exp().
-        self.log_scales = nn.Parameter(torch.full((num_gaussians, 3), -2.3, device="cuda"))
+        scales = torch.full((num_gaussians, 3), -2.3, device="cuda")
 
-        # Raw logits for alpha and RGB (activated by sigmoid).
-        self.opacity_logits = nn.Parameter(torch.full((num_gaussians,), -1.0, device="cuda"))
-        self.color_logits = nn.Parameter(torch.randn(num_gaussians, 3, device="cuda"))
+        # Raw logits for alpha and SH coefficients.
+        opacities = torch.full((num_gaussians,), -1.0, device="cuda")
+        sh_coeffs = torch.zeros(num_gaussians, self.num_sh_coeffs, 3, device="cuda")
+        with torch.no_grad():
+            # Initialize SH0 from a random RGB prior to keep initial renders visible.
+            sh_coeffs[:, 0, :] = torch.randn(num_gaussians, 3, device="cuda")
+
+        self.params = nn.ParameterDict(
+            {
+                "means": nn.Parameter(means),
+                "quats": nn.Parameter(quats),
+                "scales": nn.Parameter(scales),
+                "opacities": nn.Parameter(opacities),
+                "sh_coeffs": nn.Parameter(sh_coeffs),
+            }
+        )
 
     def activated_parameters(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        means = self.means
-        quats = F.normalize(self.quats, dim=-1)
-        scales = torch.exp(self.log_scales)
-        opacities = torch.sigmoid(self.opacity_logits)
-        colors = torch.sigmoid(self.color_logits)
-        return means, quats, scales, opacities, colors
+        means = self.params["means"]
+        quats = F.normalize(self.params["quats"], dim=-1)
+        scales = torch.exp(self.params["scales"])
+        opacities = torch.sigmoid(self.params["opacities"])
+        # Keep SH coefficients unconstrained; gsplat evaluates SH basis internally.
+        sh_coeffs = self.params["sh_coeffs"]
+        return means, quats, scales, opacities, sh_coeffs
 
     def render(
         self,
@@ -42,10 +57,12 @@ class GaussianSplat(nn.Module):
         Ks: torch.Tensor,
         width: int,
         height: int,
-    ) -> torch.Tensor:
-
+    ) -> tuple[torch.Tensor, dict]:
+        """Render the gaussians to images."""
         means, quats, scales, opacities, colors = self.activated_parameters()
-        rendered, _, _ = rasterization(
+
+        # Using packed=False for faster batch rendering as per gsplat documentation.
+        rendered, _, meta = rasterization(
             means=means,
             quats=quats,
             scales=scales,
@@ -55,9 +72,27 @@ class GaussianSplat(nn.Module):
             Ks=Ks,
             width=width,
             height=height,
-            sh_degree=None,
+            sh_degree=self.sh_degree,
+            packed=False,
         )
-        return rendered  # [B, H, W, 3]
+        return rendered, meta
+
+    def export_ply(self, path: str) -> None:
+        """Export the gaussians to a PLY file."""
+        means, quats, scales, opacities, sh_coeffs = self.activated_parameters()
+        # SH export expects SH0 and higher-order coefficients separately.
+        sh0 = sh_coeffs[:, :1, :]
+        shN = sh_coeffs[:, 1:, :]
+        export_splats(
+            means=means,
+            scales=scales,
+            quats=quats,
+            opacities=opacities,
+            sh0=sh0,
+            shN=shN,
+            format="ply",
+            save_to=path,
+        )
 
 
 class CameraParameterSampler:
