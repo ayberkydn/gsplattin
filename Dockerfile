@@ -38,14 +38,10 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 RUN uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # Install other dependencies
-RUN uv pip install gsplat pillow numpy
+RUN uv pip install gsplat pillow numpy wandb
 
 # Install project in development mode
 RUN uv pip install -e .
 
 # Verify CUDA availability
 RUN python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"N/A\"}')"
-
-# Set the entrypoint
-ENTRYPOINT ["uv", "run"]
-CMD ["train.py"]

@@ -1,0 +1,23 @@
+program: train.py
+method: grid
+project: "loss_weight_sweep"
+
+parameters:
+    backbone:
+        values: ["resnet18"]
+    target_class:
+        values:
+            - 890 #volleyball
+            - 309 #bee
+            - 954 #banana
+            - 937 #broccoli
+            - 496 #christmas stocking
+    loss.score_weight:
+        values:
+            - 1.0
+            - 0.01
+    loss.bn_weight:
+        values:
+            - 0.1
+            - 0.001
+            - 0.000001

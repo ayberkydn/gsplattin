@@ -9,7 +9,7 @@ from .camera import CameraRanges
 class GaussianSplat(nn.Module):
     """Gaussian splat with learnable parameters and batched rendering."""
 
-    def __init__(self, num_gaussians: int, sh_degree: int = 0) -> None:
+    def __init__(self, num_gaussians: int, sh_degree: int) -> None:
         super().__init__()
 
         self.sh_degree = int(sh_degree)
@@ -102,7 +102,11 @@ class CameraParameterSampler:
         self.ranges = ranges
 
     def __call__(self, batch_size: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        azimuth_deg = torch.empty(batch_size, device="cuda").uniform_(*self.ranges.azimuth_range)
-        elevation_deg = torch.empty(batch_size, device="cuda").uniform_(*self.ranges.elevation_range)
+        azimuth_deg = torch.empty(batch_size, device="cuda").uniform_(
+            -self.ranges.azimuth_range, self.ranges.azimuth_range
+        )
+        elevation_deg = torch.empty(batch_size, device="cuda").uniform_(
+            -self.ranges.elevation_range, self.ranges.elevation_range
+        )
         distance = torch.empty(batch_size, device="cuda").uniform_(*self.ranges.distance_range)
         return azimuth_deg, elevation_deg, distance

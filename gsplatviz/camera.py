@@ -8,8 +8,8 @@ import torch.nn.functional as F
 class CameraRanges:
     """Min/max bounds for spherical camera parameters."""
 
-    azimuth_range: tuple[float, float] = (-180.0, 180.0)
-    elevation_range: tuple[float, float] = (-10.0, 10.0)
+    azimuth_range: float = 180.0
+    elevation_range: float = 10.0
     distance_range: tuple[float, float] = (0.8, 1.2)
 
 

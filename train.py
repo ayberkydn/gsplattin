@@ -7,56 +7,83 @@ import tyro
 import torch
 import torch.nn.functional as F
 from tqdm.auto import tqdm
+import wandb
 
 from gsplat.strategy import MCMCStrategy
 from gsplatviz.backbones import create_backbone
 from gsplatviz.camera import CameraRanges, build_K, viewmats_from_spherical
-from gsplatviz.model_visualizer import SplatVizualizer
+from gsplatviz.splat_visualizer import SplatVizualizer
 from gsplatviz.splat import CameraParameterSampler, GaussianSplat
 
 
-@dataclass
-class TrainConfig:
-    num_gaussians: int = 10000
+@dataclass(frozen=True)
+class GaussianConfig:
+    init_count: int = 100
+    max_count: int = 10000
+    sh_degree: int = 1
+
+
+@dataclass(frozen=True)
+class CameraConfig:
     width: int = 256
     height: int = 256
-    steps: int = 30000
+    azimuth_range: float = 60.0
+    elevation_range: float = 10.0
+    distance_range: tuple[float, float] = (0.7, 1.3)
+
+
+@dataclass(frozen=True)
+class OptimizationConfig:
+    seed: int = 42
+
+    steps: int = 50000
+    batch_size: int = 32
+
     means_lr: float = 1.6e-4
     means_lr_final: float = 1.6e-6
     sh_lr: float = 2.5e-3
     opacities_lr: float = 0.05
     scales_lr: float = 0.005
     quats_lr: float = 0.001
-    seed: int = 42
-    viz_every: int = 500
-    viz_every_factor: float = 1.1
-    vis_frames: int = 72
-    vis_fps: int = 20
-    target_class: int = 388
-    backbone: str = "resnet18"
-    batch_size: int = 4
 
-    score_loss_weight: float = 0.1
-    bn_loss_weight: float = 0.0001
-    prob_loss_weight: float = 1.0
-    azimuth_min: float = -180.0
-    azimuth_max: float = 180.0
-    elevation_min: float = -10.0
-    elevation_max: float = 10.0
-    distance_min: float = 0.8
-    distance_max: float = 1.2
-    model_output_dir: str = "trained_gaussiansplat_models"
+
+@dataclass(frozen=True)
+class LossConfig:
+    score_weight: float = 0.1
+    prob_weight: float = 0.0
+    bn_weight: float = 0.0001
+    first_bn_multiplier: float = 5.0
+    scale_reg: float = 0.01
+    opacity_reg: float = 0.01
+
+
+@dataclass(frozen=True)
+class LoggingConfig:
+    viz_every: int = 500
+    viz_every_factor: float = 1.2
+    vis_frames: int = 100
+    vis_fps: int = 20
+    output_dir: str = "trained_gaussiansplat_models"
+    wandb_project: str = "gsplattin"
+
+
+@dataclass(frozen=True)
+class TrainConfig:
+    target_class: int = 445
+    backbone: str = "vit_b_16"
+
+    gs: GaussianConfig = GaussianConfig()
+    camera: CameraConfig = CameraConfig()
+    optim: OptimizationConfig = OptimizationConfig()
+    loss: LossConfig = LossConfig()
+    logging: LoggingConfig = LoggingConfig()
 
     def to_camera_ranges(self) -> CameraRanges:
         return CameraRanges(
-            azimuth_range=(self.azimuth_min, self.azimuth_max),
-            elevation_range=(self.elevation_min, self.elevation_max),
-            distance_range=(self.distance_min, self.distance_max),
+            azimuth_range=self.camera.azimuth_range,
+            elevation_range=self.camera.elevation_range,
+            distance_range=self.camera.distance_range,
         )
-
-
-def parse_args() -> TrainConfig:
-    return tyro.cli(TrainConfig)
 
 
 def save_config(config: TrainConfig, output_dir: Path, backbone: str, target_class: int) -> Path:
@@ -67,73 +94,79 @@ def save_config(config: TrainConfig, output_dir: Path, backbone: str, target_cla
 
 
 def main() -> None:
-    config = parse_args()
+    config = tyro.cli(TrainConfig)
+
+    wandb.init(
+        project=config.logging.wandb_project,
+        config=asdict(config),
+    )
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required")
 
     torch.set_default_device("cuda")
-    torch.manual_seed(config.seed)
+    torch.manual_seed(config.optim.seed)
 
-    model_output_dir = Path(config.model_output_dir)
+    model_output_dir = Path(config.logging.output_dir)
     model_output_dir.mkdir(parents=True, exist_ok=True)
 
     camera_ranges = config.to_camera_ranges()
 
     classifier = create_backbone(config.backbone)
 
-    print(f"Training on cuda with {config.num_gaussians} gaussians")
-    visualization_dir = Path(f"training_{config.backbone}_{config.target_class}_visualizations")
+    print(f"Training on cuda with {config.gs.init_count} initial gaussians (max {config.gs.max_count})")
+    visualization_dir = Path("visualizations") / config.backbone / str(config.target_class)
     visualization_dir.mkdir(parents=True, exist_ok=True)
 
-    model = GaussianSplat(num_gaussians=config.num_gaussians)
-    K = build_K(config.width, config.height)
+    model = GaussianSplat(num_gaussians=config.gs.init_count, sh_degree=config.gs.sh_degree)
+    K = build_K(config.camera.width, config.camera.height)
     sampler = CameraParameterSampler(ranges=camera_ranges)
 
     strategy = MCMCStrategy(
-
+        cap_max=config.gs.max_count,
+        noise_lr=0.01
     )
     strategy_state = strategy.initialize_state()
     lrs = {
-        "means": config.means_lr,
-        "sh_coeffs": config.sh_lr,
-        "opacities": config.opacities_lr,
-        "scales": config.scales_lr,
-        "quats": config.quats_lr,
+        "means": config.optim.means_lr,
+        "sh_coeffs": config.optim.sh_lr,
+        "opacities": config.optim.opacities_lr,
+        "scales": config.optim.scales_lr,
+        "quats": config.optim.quats_lr,
     }
     optimizers = {
         name: torch.optim.Adam([param], lr=lrs[name])
         for name, param in model.params.items()
     }
     strategy.check_sanity(model.params, optimizers)
-    target_labels = torch.full((config.batch_size,), config.target_class, dtype=torch.long)
+    target_labels = torch.full((config.optim.batch_size,), config.target_class, dtype=torch.long)
 
     saved_config_path = save_config(config, model_output_dir, config.backbone, config.target_class)
     print(f"Saved config to {saved_config_path}")
 
-    current_viz_every = max(1, int(config.viz_every))
+    current_viz_every = max(1, int(config.logging.viz_every))
     next_viz_step = 1
 
-    progress = tqdm(range(1, config.steps + 1), desc=f"class={config.target_class}", total=config.steps)
+    progress = tqdm(range(1, config.optim.steps + 1), desc=f"class={config.target_class}", total=config.optim.steps, miniters=10)
     for step in progress:
         # Exponential learning rate decay for means
-        lr_ratio = (step - 1) / (config.steps - 1)
-        curr_means_lr = config.means_lr * (config.means_lr_final / config.means_lr) ** lr_ratio
+        lr_ratio = (step - 1) / (config.optim.steps - 1)
+        curr_means_lr = config.optim.means_lr * (config.optim.means_lr_final / config.optim.means_lr) ** lr_ratio
         for param_group in optimizers["means"].param_groups:
             param_group["lr"] = curr_means_lr
 
         for opt in optimizers.values():
             opt.zero_grad(set_to_none=True)
 
-        azimuth_deg, elevation_deg, distance = sampler(batch_size=config.batch_size)
+        azimuth_deg, elevation_deg, distance = sampler(batch_size=config.optim.batch_size)
         viewmats = viewmats_from_spherical(azimuth_deg, elevation_deg, distance)
-        Ks = K.unsqueeze(0).expand(config.batch_size, -1, -1)
+        Ks = K.unsqueeze(0).expand(config.optim.batch_size, -1, -1)
 
         rendered, info = model.render(
             viewmats=viewmats,
             Ks=Ks,
-            width=config.width,
-            height=config.height,
+            width=config.camera.width,
+            height=config.camera.height,
         )
 
         rendered_rgb = rendered[..., :3].permute(0, 3, 1, 2).contiguous().clamp(0.0, 1.0)
@@ -141,9 +174,14 @@ def main() -> None:
 
         score_loss = -scores[:, config.target_class].mean()
         prob_loss = F.cross_entropy(scores, target_labels)
-        bn_loss = classifier.bn_matching_loss()
+        bn_loss = classifier.bn_matching_loss(first_bn_multiplier=config.loss.first_bn_multiplier)
 
-        loss = config.score_loss_weight * score_loss + config.prob_loss_weight * prob_loss + config.bn_loss_weight * bn_loss
+        loss = config.loss.score_weight * score_loss + config.loss.prob_weight * prob_loss + config.loss.bn_weight * bn_loss
+
+        # Regularization from 3DGS-MCMC
+        _, _, scales, opacities, _ = model.activated_parameters()
+        reg_loss = config.loss.scale_reg * scales.mean() + config.loss.opacity_reg * opacities.mean()
+        loss = loss + reg_loss
 
         strategy.step_pre_backward(model.params, optimizers, strategy_state, step, info)
         loss.backward()
@@ -152,47 +190,49 @@ def main() -> None:
         for opt in optimizers.values():
             opt.step()
 
-        if step == next_viz_step or step == config.steps:
+        wandb.log({
+            "loss/total": loss.item(),
+            "loss/score": score_loss.item(),
+            "loss/prob": prob_loss.item(),
+            "loss/bn": bn_loss.item(),
+            "loss/reg": reg_loss.item(),
+            "params/n_gaussians": model.params["means"].shape[0],
+            "params/means_lr": curr_means_lr,
+        }, step=step)
+
+        if step == next_viz_step or step == config.optim.steps:
             iter_gif_path = visualization_dir / f"iter_{step:07d}.gif"
             visualizer = SplatVizualizer(
                 splat=model,
-                width=config.width,
-                height=config.height,
+                width=config.camera.width,
+                height=config.camera.height,
                 ranges=camera_ranges,
             )
             visualizer.create_gif(
                 output_path=str(iter_gif_path),
-                num_frames=config.vis_frames,
-                fps=config.vis_fps,
+                num_frames=config.logging.vis_frames,
+                fps=config.logging.vis_fps,
             )
+            wandb.log({
+                "viz/evolution": wandb.Video(str(iter_gif_path), format="webm")
+            }, step=step)
             tqdm.write(f"Saved visualization to {iter_gif_path}")
             if step == next_viz_step:
                 next_viz_step += current_viz_every
-                current_viz_every = int(round(current_viz_every * config.viz_every_factor))
+                current_viz_every = int(round(current_viz_every * config.logging.viz_every_factor))
 
-        if step % 10 == 1:
+        if step % 50 == 1:
             progress.set_postfix(
-                loss=f"{loss.item():.6f}",
-                score_loss=f"{score_loss.item():.6f}",
-                bn_loss=f"{bn_loss.item():.6f}",
+                loss=f"{loss.item():.4f}",
+                score=f"{score_loss.item():.4f}",
+                prob=f"{prob_loss.item():.4f}",
+                bn=f"{bn_loss.item():.4f}",
+                reg=f"{reg_loss.item():.4f}",
+                n_gs=str(model.params["means"].shape[0]),
             )
 
-    final_model_path = model_output_dir / f"training_{config.backbone}_{config.target_class}.pt"
-    torch.save(
-        {
-            "backbone": config.backbone,
-            "target_class": int(config.target_class),
-            "config": asdict(config),
-            "state_dict": {name: tensor.detach().cpu() for name, tensor in model.state_dict().items()},
-        },
-        final_model_path,
-    )
-    print(f"Saved final GaussianSplatModel to {final_model_path}")
 
-    final_ply_path = model_output_dir / f"training_{config.backbone}_{config.target_class}.ply"
-    model.export_ply(str(final_ply_path))
-    print(f"Saved final PLY to {final_ply_path}")
-
+    wandb.finish()
     print("Done.")
 
 
