@@ -2,10 +2,7 @@
 FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-devel
 
 # Set environment variables for non-interactive installs and CUDA compilation
-ENV DEBIAN_FRONTEND=noninteractive \
-    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0+PTX" \
-    FORCE_CUDA=1 \
-    PIP_NO_CACHE_DIR=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies required for building CUDA extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,32 +16,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install ninja numpy jaxtyping rich tqdm wandb pillow tyro
 RUN pip install gsplat
 
-# Trigger JIT compilation of gsplat CUDA kernels during the build process.
-# This requires BuildKit and the --device flag enabled by the labs syntax directive.
-ENV MAX_JOBS=12
-RUN --device=nvidia.com/gpu=all python -c "import torch; from gsplat import rasterization; \
-    dev = torch.device('cuda'); \
-    N = 100; \
-    means = torch.randn((N, 3), device=dev); \
-    quats = torch.nn.functional.normalize(torch.randn((N, 4), device=dev), dim=-1); \
-    scales = torch.exp(torch.randn((N, 3), device=dev)); \
-    opacities = torch.sigmoid(torch.randn((N,), device=dev)); \
-    colors = torch.randn((N, 1, 3), device=dev); \
-    viewmats = torch.eye(4, device=dev)[None]; \
-    Ks = torch.tensor([[[32, 0, 16], [0, 32, 16], [0, 0, 1]]], dtype=torch.float32, device=dev); \
-    out, _, _ = rasterization( \
-    means=means, \
-    quats=quats, \
-    scales=scales, \
-    opacities=opacities, \
-    colors=colors, \
-    viewmats=viewmats, \
-    Ks=Ks, \
-    width=32, \
-    height=32, \
-    sh_degree=0, \
-    packed=False \
-    ); \
-    print(f'gsplat JIT compilation successful. Output shape: {out.shape}')"
+ENV TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0"
+
+
+# Create a non-root user
+ARG USERNAME=devuser
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME \
+    && mkdir -p /workspace && chown $USERNAME:$USERNAME /workspace
+
+# Prefer node-local temp if Slurm provides it; fallback to /tmp.
+ENV JOBTMP="/tmp"
+ENV TORCH_EXTENSIONS_DIR="$JOBTMP/torch_extensions"
+ENV XDG_CACHE_HOME="$JOBTMP/.cache"
+ENV TMPDIR="$JOBTMP/tmp"
+RUN mkdir -p "$TORCH_EXTENSIONS_DIR" "$XDG_CACHE_HOME" "$TMPDIR"
+
+# reduce parallelism (optional but helps on shared FS/quotas)
+ENV MAX_JOBS=32
+# RUN mkdir /arf #truba icin
+USER $USERNAME
+#make dir
 
 WORKDIR /workspace
