@@ -6,11 +6,16 @@ import tyro
 
 import torch
 import torch.nn.functional as F
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is required")
+
+torch.set_default_device("cuda")
+torch.set_float32_matmul_precision("high")
 from tqdm.auto import tqdm
 import wandb
 
 from gsplat.strategy import MCMCStrategy
-from gsplatviz.backbones import create_backbone
+from gsplatviz.backbones import BNMatchingLoss, create_backbone
 from gsplatviz.camera import CameraRanges, build_K, viewmats_from_spherical
 from gsplatviz.splat_visualizer import SplatVizualizer
 from gsplatviz.splat import CameraParameterSampler, GaussianSplat
@@ -49,9 +54,9 @@ class OptimizationConfig:
 
 @dataclass(frozen=True)
 class LossConfig:
-    score_weight: float = 0.1
+    score_weight: float = 1.0
     prob_weight: float = 0.0
-    bn_weight: float = 0.0001
+    bn_weight: float = 0.1
     first_bn_multiplier: float = 5.0
     scale_reg: float = 0.01
     opacity_reg: float = 0.01
@@ -70,7 +75,7 @@ class LoggingConfig:
 @dataclass(frozen=True)
 class TrainConfig:
     target_class: int = 445
-    backbone: str = "vit_b_16"
+    backbone: str = "resnet18"
 
     gs: GaussianConfig = GaussianConfig()
     camera: CameraConfig = CameraConfig()
@@ -95,24 +100,25 @@ def save_config(config: TrainConfig, output_dir: Path, backbone: str, target_cla
 
 def main() -> None:
     config = tyro.cli(TrainConfig)
+    torch.manual_seed(config.optim.seed)
 
     wandb.init(
         project=config.logging.wandb_project,
         config=asdict(config),
     )
 
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required")
-
-    torch.set_default_device("cuda")
-    torch.manual_seed(config.optim.seed)
 
     model_output_dir = Path(config.logging.output_dir)
     model_output_dir.mkdir(parents=True, exist_ok=True)
 
     camera_ranges = config.to_camera_ranges()
 
-    classifier = create_backbone(config.backbone)
+    classifier = torch.compile(create_backbone(config.backbone))
+    bn_matching_loss = BNMatchingLoss(
+        create_backbone("resnet18"),
+        first_bn_multiplier=config.loss.first_bn_multiplier,
+    )
+    bn_matching_loss.model = torch.compile(bn_matching_loss.model)
 
     print(f"Training on cuda with {config.gs.init_count} initial gaussians (max {config.gs.max_count})")
     visualization_dir = Path("visualizations") / config.backbone / str(config.target_class)
@@ -170,11 +176,14 @@ def main() -> None:
         )
 
         rendered_rgb = rendered[..., :3].permute(0, 3, 1, 2).contiguous().clamp(0.0, 1.0)
-        scores = classifier(rendered_rgb)
 
+        bn_loss = bn_matching_loss.__forward__(rendered_rgb)
+
+        with torch.amp.autocast("cuda"):
+            scores = classifier(rendered_rgb)
+        scores = scores.float()
         score_loss = -scores[:, config.target_class].mean()
         prob_loss = F.cross_entropy(scores, target_labels)
-        bn_loss = classifier.bn_matching_loss(first_bn_multiplier=config.loss.first_bn_multiplier)
 
         loss = config.loss.score_weight * score_loss + config.loss.prob_weight * prob_loss + config.loss.bn_weight * bn_loss
 

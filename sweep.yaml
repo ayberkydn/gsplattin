@@ -1,24 +1,38 @@
 program: train.py
 method: grid
-project: "loss_weight_sweep"
+project: "truba_sweep2"
 
 parameters:
     backbone:
-        values: ["wideresnet101"]
+        values:
+            - "resnet18"
+            - "vit_b_16"
+            - "densenet201"
+            - "wideresnet101"
+
+    gs.max_count:
+        values:
+            - 10000
+            - 50000
     target_class:
         values:
-            - 890 #volleyball
             - 309 #bee
-            - 954 #banana
-            # - 937 #broccoli
-            # - 496 #christmas stocking
+            - 949 #strawberry
+            - 950 #orange
+
+    gs.sh_degree:
+        values:
+            - 0
+            - 1
+            - 2
+            - 3
+
     loss.score_weight:
         values:
             - 1.0
     loss.bn_weight:
         values:
             - 0.1
-            - 0.3
-            - 1.0
-            # - 0.001
-            # - 0.000001
+
+    # optim.steps:
+    #     value: 10
