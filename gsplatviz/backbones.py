@@ -65,7 +65,7 @@ class BNMatchingLoss(nn.Module):
             (batch_mean, batch_var, module.running_mean, module.running_var)
         )
 
-    def __forward__(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Runs the model on images and returns the BN matching loss."""
         self._bn_stats = []
         self.model(images)

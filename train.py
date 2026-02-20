@@ -23,7 +23,7 @@ from gsplatviz.splat import CameraParameterSampler, GaussianSplat
 
 @dataclass(frozen=True)
 class GaussianConfig:
-    init_count: int = 100
+    init_count: int = 5000
     max_count: int = 10000
     sh_degree: int = 1
 
@@ -32,8 +32,8 @@ class GaussianConfig:
 class CameraConfig:
     width: int = 256
     height: int = 256
-    azimuth_range: float = 60.0
-    elevation_range: float = 10.0
+    azimuth_range: float = 90.0
+    elevation_range: float = 60.0
     distance_range: tuple[float, float] = (0.7, 1.3)
 
 
@@ -41,7 +41,7 @@ class CameraConfig:
 class OptimizationConfig:
     seed: int = 42
 
-    steps: int = 50000
+    steps: int = 20000
     batch_size: int = 32
 
     means_lr: float = 1.6e-4
@@ -74,8 +74,8 @@ class LoggingConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    target_class: int = 445
-    backbone: str = "vit_b_16"
+    target_class: int = 950
+    backbone: str = "resnet18"
 
     gs: GaussianConfig = GaussianConfig()
     camera: CameraConfig = CameraConfig()
@@ -130,7 +130,9 @@ def main() -> None:
 
     strategy = MCMCStrategy(
         cap_max=config.gs.max_count,
-        noise_lr=0.01
+        noise_lr=0.01,
+        refine_start_iter=0,
+        refine_every=200,
     )
     strategy_state = strategy.initialize_state()
     lrs = {
@@ -168,7 +170,7 @@ def main() -> None:
         viewmats = viewmats_from_spherical(azimuth_deg, elevation_deg, distance)
         Ks = K.unsqueeze(0).expand(config.optim.batch_size, -1, -1)
 
-        rendered, info = model.render(
+        rendered = model.render(
             viewmats=viewmats,
             Ks=Ks,
             width=config.camera.width,
@@ -176,8 +178,9 @@ def main() -> None:
         )
 
         rendered_rgb = rendered[..., :3].permute(0, 3, 1, 2).contiguous().clamp(0.0, 1.0)
+        ##TODO consider sigmoid
 
-        bn_loss = bn_matching_loss.__forward__(rendered_rgb)
+        bn_loss = bn_matching_loss(rendered_rgb)
 
         with torch.amp.autocast("cuda"):
             scores = classifier(rendered_rgb)
@@ -192,22 +195,13 @@ def main() -> None:
         reg_loss = config.loss.scale_reg * scales.mean() + config.loss.opacity_reg * opacities.mean()
         loss = loss + reg_loss
 
-        strategy.step_pre_backward(model.params, optimizers, strategy_state, step, info)
+        strategy.step_pre_backward(model.params, optimizers, strategy_state, step, {})
         loss.backward()
-        strategy.step_post_backward(model.params, optimizers, strategy_state, step, info, lr=curr_means_lr)
+        strategy.step_post_backward(model.params, optimizers, strategy_state, step, {}, lr=curr_means_lr)
 
         for opt in optimizers.values():
             opt.step()
 
-        wandb.log({
-            "loss/total": loss.item(),
-            "loss/score": score_loss.item(),
-            "loss/prob": prob_loss.item(),
-            "loss/bn": bn_loss.item(),
-            "loss/reg": reg_loss.item(),
-            "params/n_gaussians": model.params["means"].shape[0],
-            "params/means_lr": curr_means_lr,
-        }, step=step)
 
         if step == next_viz_step or step == config.optim.steps:
             iter_gif_path = visualization_dir / f"iter_{step:07d}.gif"
@@ -231,6 +225,16 @@ def main() -> None:
                 current_viz_every = int(round(current_viz_every * config.logging.viz_every_factor))
 
         if step % 50 == 1:
+            wandb.log({
+                "loss/total": loss.item(),
+                "loss/score": score_loss.item(),
+                "loss/prob": prob_loss.item(),
+                "loss/bn": bn_loss.item(),
+                "loss/reg": reg_loss.item(),
+                "params/n_gaussians": model.params["means"].shape[0],
+                "params/means_lr": curr_means_lr,
+            }, step=step)
+
             progress.set_postfix(
                 loss=f"{loss.item():.4f}",
                 score=f"{score_loss.item():.4f}",

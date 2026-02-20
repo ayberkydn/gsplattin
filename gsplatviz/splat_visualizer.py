@@ -54,7 +54,7 @@ class SplatVizualizer:
                     azimuth_deg[i:end], elevation_deg[i:end], distance[i:end]
                 )
                 Ks = self.K.unsqueeze(0).expand(end - i, -1, -1)
-                rendered_batch, _ = self.splat.render(
+                rendered_batch = self.splat.render(
                     viewmats=viewmats, Ks=Ks, width=self.width, height=self.height
                 )
                 for idx in range(rendered_batch.shape[0]):

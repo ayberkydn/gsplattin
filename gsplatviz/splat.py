@@ -57,12 +57,12 @@ class GaussianSplat(nn.Module):
         Ks: torch.Tensor,
         width: int,
         height: int,
-    ) -> tuple[torch.Tensor, dict]:
+    ) -> torch.Tensor:
         """Render the gaussians to images."""
         means, quats, scales, opacities, colors = self.activated_parameters()
 
         # Using packed=False for faster batch rendering as per gsplat documentation.
-        rendered, _, meta = rasterization(
+        rendered, _, _ = rasterization(
             means=means,
             quats=quats,
             scales=scales,
@@ -75,7 +75,7 @@ class GaussianSplat(nn.Module):
             sh_degree=self.sh_degree,
             packed=False,
         )
-        return rendered, meta
+        return rendered
 
     def export_ply(self, path: str) -> None:
         """Export the gaussians to a PLY file."""
