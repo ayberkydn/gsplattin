@@ -153,7 +153,7 @@ def main() -> None:
     current_viz_every = max(1, int(config.logging.viz_every))
     next_viz_step = 1
 
-    progress = tqdm(range(1, config.optim.steps + 1), desc=f"class={config.target_class}", total=config.optim.steps, miniters=10)
+    progress = tqdm(range(1, config.optim.steps + 1), desc=f"class={config.target_class}", total=config.optim.steps, miniters=50)
     for step in progress:
         # Exponential learning rate decay for means
         lr_ratio = (step - 1) / (config.optim.steps - 1)

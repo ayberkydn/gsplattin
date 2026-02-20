@@ -20,15 +20,15 @@ ENV TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0"
 
 
 
-# Prefer node-local temp if Slurm provides it; fallback to /tmp.
-ENV JOBTMP="/tmp"
-ENV TORCH_EXTENSIONS_DIR="$JOBTMP/torch_extensions"
-ENV XDG_CACHE_HOME="$JOBTMP/.cache"
-ENV TMPDIR="$JOBTMP/tmp"
-RUN mkdir -p "$TORCH_EXTENSIONS_DIR" "$XDG_CACHE_HOME" "$TMPDIR"
+# # Prefer node-local temp if Slurm provides it; fallback to /tmp.
+# ENV JOBTMP="/tmp"
+# ENV TORCH_EXTENSIONS_DIR="$JOBTMP/torch_extensions"
+# ENV XDG_CACHE_HOME="$JOBTMP/.cache"
+# ENV TMPDIR="$JOBTMP/tmp"
+# RUN mkdir -p "$TORCH_EXTENSIONS_DIR" "$XDG_CACHE_HOME" "$TMPDIR"
 
-# reduce parallelism (optional but helps on shared FS/quotas)
-ENV MAX_JOBS=32
+# # reduce parallelism (optional but helps on shared FS/quotas)
+# ENV MAX_JOBS=32
 # RUN mkdir /arf #truba icin
 #
 # Create a non-root user
