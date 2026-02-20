@@ -13,7 +13,7 @@ parameters:
     gs.max_count:
         values:
             - 10000
-            - 50000
+            - 20000
     target_class:
         values:
             - 309 #bee
@@ -25,7 +25,6 @@ parameters:
             - 0
             - 1
             - 2
-            - 3
 
     loss.score_weight:
         values:
