@@ -75,7 +75,7 @@ class LoggingConfig:
 @dataclass(frozen=True)
 class TrainConfig:
     target_class: int = 445
-    backbone: str = "resnet18"
+    backbone: str = "vit_b_16"
 
     gs: GaussianConfig = GaussianConfig()
     camera: CameraConfig = CameraConfig()
