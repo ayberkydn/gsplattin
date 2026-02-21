@@ -7,9 +7,8 @@ if [[ $# -lt 1 || -z "${1:-}" ]]; then
 fi
 
 agent_id="$1"
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 apptainer exec --nv \
 	-B /arf/scratch/aaydin:/arf/home/aaydin \
-	"${script_dir}/../gsplattin.sif" \
+	"../gsplattin.sif" \
 	wandb agent "ayberkydn/models_sweep/${agent_id}"

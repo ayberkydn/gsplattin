@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SIF="${script_dir}/../gsplattin.sif"
+SIF="/arf/scratch/aaydin/gsplattin.sif"
 BIND="/arf/scratch/aaydin:/arf/home/aaydin"
 APPT="apptainer exec --nv -B ${BIND} ${SIF}"
 
@@ -26,8 +25,9 @@ out, _, _ = rasterization(
     width=32,
     height=32,
     sh_degree=0,
-    packed=False,
 )
+
+print('Rasterization OK.')
 PY
 
-$APPT python train.py
+python train.py
