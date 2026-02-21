@@ -42,7 +42,7 @@ class OptimizationConfig:
     seed: int = 42
 
     steps: int = 50000
-    batch_size: int = 32
+    batch_size: int = 16
 
     means_lr: float = 1.6e-4
     means_lr_final: float = 1.6e-6

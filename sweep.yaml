@@ -1,6 +1,6 @@
 program: train.py
 method: grid
-project: "model_sweep"
+project: "models_sweep"
 # name: "sh_sweep"
 
 parameters:
@@ -11,7 +11,7 @@ parameters:
             # - "swin_v2_t"
             # - "swin_v2_b"
             - "vit_h_14"
-            - "resnext50_32x4d"
+            - "resnext50"
               # - "resnet18"
               # - "vit_b_16"
               # - "densenet201"
