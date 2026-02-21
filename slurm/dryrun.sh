@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SIF="../gsplattin.sif"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SIF="${script_dir}/../gsplattin.sif"
 BIND="/arf/scratch/aaydin:/arf/home/aaydin"
 APPT="apptainer exec --nv -B ${BIND} ${SIF}"
 

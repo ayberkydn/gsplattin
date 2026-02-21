@@ -1,20 +1,18 @@
 #!/bin/bash
 #SBATCH -p palamut-cuda     # Kuyruk adi: Uzerinde GPU olan kuyruk olmasina dikkat edin.
-#SBATCH -o out.txt          # Ciktinin yazilacagi dosya adi
+#SBATCH -o out_%j_%a.txt    # Ciktinin yazilacagi dosya adi
 #SBATCH --gres=gpu:1        # Her bir sunucuda kac GPU istiyorsunuz? Kumeleri kontrol edin.
 #SBATCH -N 1                # Gorev kac node'da calisacak?
 #SBATCH -n 1                # Ayni gorevden kac adet calistirilacak?
 #SBATCH --cpus-per-task 2   # Her bir gorev kac cekirdek kullanacak? Kumeleri kontrol edin.
 #SBATCH --time=4:00:00      # Sure siniri koyun.
+#SBATCH --array=0-2%3       # 3 parallel agents
+#SBATCH --job-name=gsplat-%a
 
-# Çalıştırılacak komutlar
 if [[ $# -lt 1 || -z "${1:-}" ]]; then
   echo "Usage: $0 <wandb-agent-id>" >&2
   exit 1
 fi
 
-bash runagents.sh "$1" &
-bash runagents.sh "$1" &
-bash runagents.sh "$1" &
-
-wait
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "${script_dir}/runagent.sh" "$1"
