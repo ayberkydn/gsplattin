@@ -6,21 +6,25 @@ project: "models_sweep"
 parameters:
     backbone:
         values:
-            - "resnet18.tv_in1k"
+            - "vit_base_patch16_224_miil.in21k"
+            - "tresnet_m.miil_in21k"
+            - mixer_b16_224.miil_in21k
 
     bn_backbone:
         values:
-            - "resnet18.a1_in1k"
             - "resnet18.tv_in1k"
 
     loss.bn_weight:
         values:
-            - 0.01
-            - 0.1
-            - 1
+            - 0.025
 
     target_class:
         values:
-            - 950 #orange
-            - 309 #bee
-            - 949 #strawberry
+            - 9620
+            - 7626
+            - 1686
+            - 2320
+            - 2397
+
+    optim.steps:
+        value: 100000

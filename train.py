@@ -74,7 +74,7 @@ class LoggingConfig:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    target_class: int = 950
+    target_class: int = 937
     backbone: str = "resnet18.a1_in1k"
     bn_backbone: str = "resnet18.tv_in1k"
 
@@ -148,8 +148,6 @@ def main() -> None:
     strategy.check_sanity(model.params, optimizers)
     target_labels = torch.full((config.optim.batch_size,), config.target_class, dtype=torch.long)
 
-    saved_config_path = save_config(config, model_output_dir, config.backbone, config.target_class)
-    print(f"Saved config to {saved_config_path}")
 
     current_viz_every = max(1, int(config.logging.viz_every))
     next_viz_step = 1
