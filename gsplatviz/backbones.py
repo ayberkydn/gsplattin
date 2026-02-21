@@ -2,27 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import timm
-from timm.data import resolve_model_data_config
-
-
-class ImageNormalizer(nn.Module):
-    """Model-specific input normalization."""
-
-    def __init__(
-        self,
-        mean: tuple[float, float, float],
-        std: tuple[float, float, float],
-    ) -> None:
-        super().__init__()
-        self.register_buffer(
-            "mean", torch.tensor(mean, dtype=torch.float32).view(1, 3, 1, 1)
-        )
-        self.register_buffer(
-            "std", torch.tensor(std, dtype=torch.float32).view(1, 3, 1, 1)
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return (x - self.mean) / self.std
+from timm.data import create_transform, resolve_model_data_config
 
 
 class BNMatchingLoss(nn.Module):
@@ -67,8 +47,8 @@ class BNMatchingLoss(nn.Module):
         loss = torch.tensor(0.0, device=device)
 
         for idx, (b_mean, b_var, r_mean, r_var) in enumerate(self._bn_stats):
-            layer_loss = F.mse_loss(b_mean, r_mean) + F.mse_loss(b_var, r_var)
-            weight = self.first_bn_multiplier if idx < 3 else 1.0
+            layer_loss = F.smooth_l1_loss(b_mean, r_mean) + F.smooth_l1_loss(b_var, r_var)
+            weight = self.first_bn_multiplier if idx == 0 else 1.0
             loss = loss + weight * layer_loss
 
         total_loss = loss / len(self._bn_stats)
@@ -76,54 +56,23 @@ class BNMatchingLoss(nn.Module):
         return total_loss
 
 
-class FrozenStandardBackbone(nn.Module):
-    """
-    Wraps a backbone with model-specific input preprocessing.
-    Sets the backbone to evaluation mode and disables gradient computation.
-    """
+class FrozenBackbone(nn.Module):
+    """Frozen pretrained timm backbone with model-specific eval preprocessing."""
 
-    def __init__(
-        self,
-        backbone: nn.Module,
-        input_size: tuple[int, int],
-        mean: tuple[float, float, float],
-        std: tuple[float, float, float],
-        interpolation: str,
-    ) -> None:
+    def __init__(self, backbone: nn.Module) -> None:
         super().__init__()
         self.backbone = backbone
-        self.input_size = input_size
-        self.interpolation = interpolation
-        self.normalizer = ImageNormalizer(mean=mean, std=std)
+        self.data_config = resolve_model_data_config(backbone)
+        self.preprocess = create_transform(**self.data_config, is_training=False)
 
         self.backbone.eval()
         for param in self.backbone.parameters():
             param.requires_grad = False
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        if tuple(images.shape[-2:]) != self.input_size:
-            images = F.interpolate(
-                images,
-                size=self.input_size,
-                mode=self.interpolation,
-                align_corners=False,
-            )
-        normalized = self.normalizer(images)
-        return self.backbone(normalized)
+        return self.backbone(self.preprocess(images))
 
 
-
-def create_backbone(name: str) -> FrozenStandardBackbone:
+def create_backbone(name: str) -> FrozenBackbone:
     backbone = timm.create_model(name, pretrained=True)
-    data_cfg = resolve_model_data_config(backbone)
-    interpolation = data_cfg.get("interpolation", "bilinear")
-    if interpolation not in {"bilinear", "bicubic"}:
-        interpolation = "bilinear"
-
-    return FrozenStandardBackbone(
-        backbone=backbone,
-        input_size=tuple(data_cfg["input_size"][-2:]),
-        mean=tuple(data_cfg["mean"]),
-        std=tuple(data_cfg["std"]),
-        interpolation=interpolation,
-    )
+    return FrozenBackbone(backbone=backbone)

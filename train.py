@@ -75,7 +75,8 @@ class LoggingConfig:
 @dataclass(frozen=True)
 class TrainConfig:
     target_class: int = 950
-    backbone: str = "resnet18"
+    backbone: str = "resnet18.a1_in1k"
+    bn_backbone: str = "resnet18.tv_in1k"
 
     gs: GaussianConfig = GaussianConfig()
     camera: CameraConfig = CameraConfig()
@@ -115,7 +116,7 @@ def main() -> None:
 
     classifier = torch.compile(create_backbone(config.backbone))
     bn_matching_loss = BNMatchingLoss(
-        create_backbone("resnet18"),
+        create_backbone(config.bn_backbone),
         first_bn_multiplier=config.loss.first_bn_multiplier,
     )
     bn_matching_loss.model = torch.compile(bn_matching_loss.model)
