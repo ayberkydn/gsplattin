@@ -5,23 +5,27 @@ from torchvision.models import (
     DenseNet121_Weights,
     DenseNet201_Weights,
     ResNet18_Weights,
+    ResNeXt50_32X4D_Weights,
     ResNet50_Weights,
     Swin_B_Weights,
     Swin_T_Weights,
     Swin_V2_B_Weights,
     Swin_V2_T_Weights,
     ViT_B_16_Weights,
+    ViT_H_14_Weights,
     Wide_ResNet50_2_Weights,
     Wide_ResNet101_2_Weights,
     densenet121,
     densenet201,
     resnet18,
     resnet50,
+    resnext50_32x4d,
     swin_b,
     swin_t,
     swin_v2_b,
     swin_v2_t,
     vit_b_16,
+    vit_h_14,
     wide_resnet50_2,
     wide_resnet101_2,
 )
@@ -160,6 +164,19 @@ def create_vit_b_16():
     )
 
 
+def create_resnext50():
+    return FrozenStandardBackbone(
+        resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.IMAGENET1K_V1)
+    )
+
+
+def create_vit_h_14():
+    return FrozenStandardBackbone(
+        vit_h_14(weights=ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1),
+        input_size=(518, 518),
+    )
+
+
 def create_swin_t():
     return FrozenStandardBackbone(
         swin_t(weights=Swin_T_Weights.IMAGENET1K_V1),
@@ -196,6 +213,8 @@ BACKBONES = {
     "densenet121": create_densenet121,
     "densenet201": create_densenet201,
     "vit_b_16": create_vit_b_16,
+    "vit_h_14": create_vit_h_14,
+    "resnext50": create_resnext50,
     "swin_t": create_swin_t,
     "swin_b": create_swin_b,
     "swin_v2_t": create_swin_v2_t,

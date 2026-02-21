@@ -1,7 +1,7 @@
 program: train.py
 method: grid
-project: "truba_sh_sweep"
-name: "sh_sweep"
+project: "model_sweep"
+# name: "sh_sweep"
 
 parameters:
     backbone:
@@ -10,7 +10,8 @@ parameters:
             - "swin_v2_t"
             - "swin_b"
             - "swin_v2_b"
-            -
+            - "vit_h_14"
+            - "resnext50_32x4d"
               # - "resnet18"
               # - "vit_b_16"
               # - "densenet201"
