@@ -218,7 +218,6 @@ def main() -> None:
             wandb.log({
                 "viz/evolution": wandb.Video(str(iter_gif_path), format="webm")
             }, step=step)
-            tqdm.write(f"Saved visualization to {iter_gif_path}")
             if step == next_viz_step:
                 next_viz_step += current_viz_every
                 current_viz_every = int(round(current_viz_every * config.logging.viz_every_factor))
