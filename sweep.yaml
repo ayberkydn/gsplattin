@@ -6,18 +6,18 @@ name: "sh_sweep"
 parameters:
     backbone:
         values:
-            - "resnet18"
-            - "vit_b_16"
-            - "densenet201"
-            # - "wideresnet101"
+            - "swin_t"
+            - "swin_v2_t"
+            - "swin_b"
+            - "swin_v2_b"
+            -
+              # - "resnet18"
+              # - "vit_b_16"
+              # - "densenet201"
+              # - "wideresnet101"
 
     target_class:
         values:
             - 950 #orange
-            # - 309 #bee
+            - 309 #bee
             - 949 #strawberry
-
-    gs.sh_degree:
-        values:
-            - 1
-            - 2

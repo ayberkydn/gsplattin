@@ -25,7 +25,7 @@ from gsplatviz.splat import CameraParameterSampler, GaussianSplat
 class GaussianConfig:
     init_count: int = 2000
     max_count: int = 10000
-    sh_degree: int = 1
+    sh_degree: int = 2
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class CameraConfig:
 class OptimizationConfig:
     seed: int = 42
 
-    steps: int = 20000
+    steps: int = 50000
     batch_size: int = 32
 
     means_lr: float = 1.6e-4
