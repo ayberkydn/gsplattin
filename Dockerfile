@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip3 install ninja numpy jaxtyping rich tqdm wandb pillow tyro
+RUN pip3 install ninja numpy jaxtyping rich tqdm wandb pillow tyro timm
 RUN pip install gsplat
 
 ENV TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0"

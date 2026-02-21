@@ -1,46 +1,24 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torchvision.models import (
-    DenseNet121_Weights,
-    DenseNet201_Weights,
-    ResNet18_Weights,
-    ResNeXt50_32X4D_Weights,
-    ResNet50_Weights,
-    Swin_B_Weights,
-    Swin_T_Weights,
-    Swin_V2_B_Weights,
-    Swin_V2_T_Weights,
-    ViT_B_16_Weights,
-    ViT_H_14_Weights,
-    Wide_ResNet50_2_Weights,
-    Wide_ResNet101_2_Weights,
-    densenet121,
-    densenet201,
-    resnet18,
-    resnet50,
-    resnext50_32x4d,
-    swin_b,
-    swin_t,
-    swin_v2_b,
-    swin_v2_t,
-    vit_b_16,
-    vit_h_14,
-    wide_resnet50_2,
-    wide_resnet101_2,
-)
+import timm
+from timm.data import resolve_model_data_config
 
 
 class ImageNormalizer(nn.Module):
-    """Standard ImageNet normalization."""
+    """Model-specific input normalization."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        mean: tuple[float, float, float],
+        std: tuple[float, float, float],
+    ) -> None:
         super().__init__()
         self.register_buffer(
-            "mean", torch.tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1)
+            "mean", torch.tensor(mean, dtype=torch.float32).view(1, 3, 1, 1)
         )
         self.register_buffer(
-            "std", torch.tensor((0.229, 0.224, 0.225)).view(1, 3, 1, 1)
+            "std", torch.tensor(std, dtype=torch.float32).view(1, 3, 1, 1)
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -100,131 +78,52 @@ class BNMatchingLoss(nn.Module):
 
 class FrozenStandardBackbone(nn.Module):
     """
-    Wraps a backbone with ImageNet input standardization.
+    Wraps a backbone with model-specific input preprocessing.
     Sets the backbone to evaluation mode and disables gradient computation.
     """
 
     def __init__(
         self,
         backbone: nn.Module,
-        input_size: tuple[int, int] | None = None,
+        input_size: tuple[int, int],
+        mean: tuple[float, float, float],
+        std: tuple[float, float, float],
+        interpolation: str,
     ) -> None:
         super().__init__()
         self.backbone = backbone
         self.input_size = input_size
-        self.normalizer = ImageNormalizer()
+        self.interpolation = interpolation
+        self.normalizer = ImageNormalizer(mean=mean, std=std)
 
         self.backbone.eval()
         for param in self.backbone.parameters():
             param.requires_grad = False
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        if self.input_size is not None:
+        if tuple(images.shape[-2:]) != self.input_size:
             images = F.interpolate(
-                images, size=self.input_size, mode="bilinear", align_corners=False
+                images,
+                size=self.input_size,
+                mode=self.interpolation,
+                align_corners=False,
             )
         normalized = self.normalizer(images)
         return self.backbone(normalized)
 
 
-def create_resnet18():
-    return FrozenStandardBackbone(resnet18(weights=ResNet18_Weights.IMAGENET1K_V1))
-
-
-def create_resnet50():
-    return FrozenStandardBackbone(resnet50(weights=ResNet50_Weights.IMAGENET1K_V1))
-
-
-def create_wideresnet50():
-    return FrozenStandardBackbone(
-        wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V1)
-    )
-
-
-def create_densenet121():
-    return FrozenStandardBackbone(densenet121(weights=DenseNet121_Weights.IMAGENET1K_V1))
-
-
-def create_wideresnet101():
-    return FrozenStandardBackbone(
-        wide_resnet101_2(weights=Wide_ResNet101_2_Weights.IMAGENET1K_V1)
-    )
-
-
-
-
-def create_densenet201():
-    return FrozenStandardBackbone(densenet201(weights=DenseNet201_Weights.IMAGENET1K_V1))
-
-
-def create_vit_b_16():
-    return FrozenStandardBackbone(
-        vit_b_16(weights=ViT_B_16_Weights.IMAGENET1K_V1),
-        input_size=(224, 224),
-    )
-
-
-def create_resnext50():
-    return FrozenStandardBackbone(
-        resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.IMAGENET1K_V1)
-    )
-
-
-def create_vit_h_14():
-    return FrozenStandardBackbone(
-        vit_h_14(weights=ViT_H_14_Weights.IMAGENET1K_SWAG_E2E_V1),
-        input_size=(518, 518),
-    )
-
-
-def create_swin_t():
-    return FrozenStandardBackbone(
-        swin_t(weights=Swin_T_Weights.IMAGENET1K_V1),
-        input_size=(224, 224),
-    )
-
-
-def create_swin_b():
-    return FrozenStandardBackbone(
-        swin_b(weights=Swin_B_Weights.IMAGENET1K_V1),
-        input_size=(224, 224),
-    )
-
-
-def create_swin_v2_t():
-    return FrozenStandardBackbone(
-        swin_v2_t(weights=Swin_V2_T_Weights.IMAGENET1K_V1),
-        input_size=(256, 256),
-    )
-
-
-def create_swin_v2_b():
-    return FrozenStandardBackbone(
-        swin_v2_b(weights=Swin_V2_B_Weights.IMAGENET1K_V1),
-        input_size=(256, 256),
-    )
-
-
-BACKBONES = {
-    "resnet18": create_resnet18,
-    "resnet50": create_resnet50,
-    "wideresnet50": create_wideresnet50,
-    "wideresnet101": create_wideresnet101,
-    "densenet121": create_densenet121,
-    "densenet201": create_densenet201,
-    "vit_b_16": create_vit_b_16,
-    "vit_h_14": create_vit_h_14,
-    "resnext50": create_resnext50,
-    "swin_t": create_swin_t,
-    "swin_b": create_swin_b,
-    "swin_v2_t": create_swin_v2_t,
-    "swin_v2_b": create_swin_v2_b,
-}
-
 
 def create_backbone(name: str) -> FrozenStandardBackbone:
-    if name not in BACKBONES:
-        raise ValueError(
-            f"Unknown backbone '{name}'. Available: {list(BACKBONES.keys())}"
-        )
-    return BACKBONES[name]()
+    backbone = timm.create_model(name, pretrained=True)
+    data_cfg = resolve_model_data_config(backbone)
+    interpolation = data_cfg.get("interpolation", "bilinear")
+    if interpolation not in {"bilinear", "bicubic"}:
+        interpolation = "bilinear"
+
+    return FrozenStandardBackbone(
+        backbone=backbone,
+        input_size=tuple(data_cfg["input_size"][-2:]),
+        mean=tuple(data_cfg["mean"]),
+        std=tuple(data_cfg["std"]),
+        interpolation=interpolation,
+    )
