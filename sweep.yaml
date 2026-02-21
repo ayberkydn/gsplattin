@@ -7,9 +7,9 @@ parameters:
     backbone:
         values:
             - "swin_t"
-            - "swin_v2_t"
             - "swin_b"
-            - "swin_v2_b"
+            # - "swin_v2_t"
+            # - "swin_v2_b"
             - "vit_h_14"
             - "resnext50_32x4d"
               # - "resnet18"
