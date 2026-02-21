@@ -45,7 +45,7 @@ class GaussianSplat(nn.Module):
     def activated_parameters(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         means = self.params["means"]
         quats = F.normalize(self.params["quats"], dim=-1)
-        scales = torch.exp(self.params["scales"])
+        scales = torch.exp(self.params["scales"].clamp(max=10.0))
         opacities = torch.sigmoid(self.params["opacities"])
         # Keep SH coefficients unconstrained; gsplat evaluates SH basis internally.
         sh_coeffs = self.params["sh_coeffs"]

@@ -181,7 +181,7 @@ def main() -> None:
 
         bn_loss = bn_matching_loss(rendered_rgb)
 
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda", dtype=torch.bfloat16):
             scores = classifier(rendered_rgb)
         scores = scores.float()
         score_loss = -scores[:, config.target_class].mean()
