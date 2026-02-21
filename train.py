@@ -23,7 +23,7 @@ from gsplatviz.splat import CameraParameterSampler, GaussianSplat
 
 @dataclass(frozen=True)
 class GaussianConfig:
-    init_count: int = 5000
+    init_count: int = 2000
     max_count: int = 10000
     sh_degree: int = 1
 
@@ -131,7 +131,6 @@ def main() -> None:
     strategy = MCMCStrategy(
         cap_max=config.gs.max_count,
         noise_lr=0.01,
-        refine_start_iter=0,
         refine_every=200,
     )
     strategy_state = strategy.initialize_state()

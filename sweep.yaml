@@ -7,29 +7,17 @@ parameters:
     backbone:
         values:
             - "resnet18"
-            # - "vit_b_16"
-            # - "densenet201"
+            - "vit_b_16"
+            - "densenet201"
             # - "wideresnet101"
 
     target_class:
         values:
-            # - 950 #orange
+            - 950 #orange
             # - 309 #bee
             - 949 #strawberry
-
-    gs.init_count:
-        values:
-            - 1000
-            - 2000
-            - 5000
 
     gs.sh_degree:
         values:
             - 1
-
-    loss.score_weight:
-        values:
-            - 1.0
-    loss.bn_weight:
-        values:
-            - 0.1
+            - 2
