@@ -114,12 +114,11 @@ def main() -> None:
 
     camera_ranges = config.to_camera_ranges()
 
-    classifier = torch.compile(create_backbone(config.backbone))
+    classifier = create_backbone(config.backbone)
     bn_matching_loss = BNMatchingLoss(
         create_backbone(config.bn_backbone),
         first_bn_multiplier=config.loss.first_bn_multiplier,
     )
-    bn_matching_loss.model = torch.compile(bn_matching_loss.model)
 
     print(f"Training on cuda with {config.gs.init_count} initial gaussians (max {config.gs.max_count})")
     visualization_dir = Path("visualizations") / config.backbone / str(config.target_class)

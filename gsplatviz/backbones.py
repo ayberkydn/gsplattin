@@ -61,13 +61,13 @@ class FrozenBackbone(nn.Module):
 
     def __init__(self, backbone: nn.Module) -> None:
         super().__init__()
-        self.backbone = backbone
         self.data_config = resolve_model_data_config(backbone)
         self.preprocess = create_transform(**self.data_config, is_training=False)
 
-        self.backbone.eval()
-        for param in self.backbone.parameters():
+        backbone.eval()
+        for param in backbone.parameters():
             param.requires_grad = False
+        self.backbone = torch.compile(backbone)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         return self.backbone(self.preprocess(images))
