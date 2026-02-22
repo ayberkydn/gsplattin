@@ -7,7 +7,7 @@ from timm.data import create_transform, resolve_model_data_config
 
 class BNMatchingLoss(nn.Module):
     """
-    MSE between batch statistics and running statistics.
+    Smooth L1 between batch statistics and pretrained running statistics.
     """
 
     def __init__(self, model: nn.Module, first_bn_multiplier: float = 1.0) -> None:

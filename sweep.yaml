@@ -9,11 +9,10 @@ parameters:
             # - "vit_base_patch16_224_miil.in21k"
             # - "tresnet_m.miil_in21k"
             # - mixer_b16_224.miil_in21k
-            - "convnext_base.fcmae_ft_in1k"
-            - "convnext_base.fb_in22k_ft_in1k"
-            - "convnext_large.fcmae_ft_in1k"
-            - "convnext_large.fb_in22k_ft_in1k"
-            - "vit_large_patch16_224.augreg_in21k_ft_in1k"
+            # - "convnext_base.fb_in22k_ft_in1k"
+            # - "convnext_large.fb_in22k_ft_in1k"
+            - "convnextv2_large.fcmae_ft_in22k_in1k_384"
+            # - "vit_large_patch16_224.augreg_in21k_ft_in1k"
 
     bn_backbone:
         values:
