@@ -14,5 +14,4 @@ if [[ $# -lt 1 || -z "${1:-}" ]]; then
   exit 1
 fi
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-bash "${script_dir}/runagent.sh" "$1"
+bash runagent.sh "$1"

@@ -6,9 +6,14 @@ project: "models_sweep"
 parameters:
     backbone:
         values:
-            - "vit_base_patch16_224_miil.in21k"
-            - "tresnet_m.miil_in21k"
-            - mixer_b16_224.miil_in21k
+            # - "vit_base_patch16_224_miil.in21k"
+            # - "tresnet_m.miil_in21k"
+            # - mixer_b16_224.miil_in21k
+            - "convnext_base.fcmae_ft_in1k"
+            - "convnext_base.fb_in22k_ft_in1k"
+            - "convnext_large.fcmae_ft_in1k"
+            - "convnext_large.fb_in22k_ft_in1k"
+            - "vit_large_patch16_224.augreg_in21k_ft_in1k"
 
     bn_backbone:
         values:
@@ -20,11 +25,12 @@ parameters:
 
     target_class:
         values:
-            - 9620
-            - 7626
-            - 1686
-            - 2320
-            - 2397
+            - 309
+            - 949
+            - 950
+            # - 963
+            # - 966
+            # - 971
 
     optim.steps:
         value: 100000
